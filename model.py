@@ -149,6 +149,7 @@ class CCFRec(SeqBaseModel):
         )
         self.dropout1 = nn.Dropout(self.hidden_dropout_prob)
         self.LayerNorm = nn.LayerNorm(self.embedding_size)
+        self.context_gate = nn.Linear(self.embedding_size, 1)
         #------------------------------------------------------
         self.transformer = Transformer(
             n_layers=self.n_layers,
@@ -225,7 +226,10 @@ class CCFRec(SeqBaseModel):
         item_emb = item_emb.view(B, L, -1)
         # ------------------------------------------------------
         # print("外面傅里叶")
-        # item_emb = self.contextual_convolution(self.item_embedding(item_seq), item_emb)
+        item_emb_original = item_emb
+        item_emb_context = self.contextual_convolution(self.item_embedding(item_seq), item_emb_original)
+        gate = torch.sigmoid(self.context_gate(item_emb_original))  # [B, L, 1]
+        item_emb = gate * item_emb_context + (1 - gate) * item_emb_original
         # ------------------------------------------------------
         
         

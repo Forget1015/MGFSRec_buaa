@@ -80,7 +80,7 @@ python main.py \
     --batch_size=100 \
     --dropout_prob=0.3 \
     --dropout_prob_cross=0.3 \
-    --n_layers=2 \
+    --n_layers=4 \
     --n_heads=2 \
     --embedding_size=128 \
     --hidden_size=512\
