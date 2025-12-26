@@ -9,13 +9,17 @@ from torch.nn.utils.rnn import pad_sequence
 def load_split_data(args):
     def transform_token2id_seq(item_seqs, item2id):
         id_seqs = []
+        session_seqs = []
         for one_piece in item_seqs:
             item_seq = one_piece["inter_history"]
+            session_ids = one_piece["session_ids"]
             item_id_seq = [item2id[item] for item in item_seq]
 
             target_id = item2id[one_piece["target_id"]]
             id_seqs.append(item_id_seq + [target_id])
-        return id_seqs
+            session_seqs.append(session_ids)
+        return [id_seqs,session_seqs]
+
 
     data_path = args.data_path
     dataset = args.dataset
@@ -53,8 +57,9 @@ class CCFSeqSplitDataset(Dataset):
 
     def __map_inter__(self, inter_seq):
         inter_data = []
-        for seq in inter_seq:
+        for seq,session_seq in zip(*inter_seq):
             item_seq = seq[:-1][-self.max_his_len:]
+            session_seq = session_seq[-self.max_his_len:]
             code_seq = []
             for item in item_seq:
                 id = []
@@ -62,7 +67,7 @@ class CCFSeqSplitDataset(Dataset):
                     id.append(self.index[item][i]+i*self.args.n_codes_per_lel+1)
                 code_seq.extend(id)
 
-            inter_data.append({"item_inter": item_seq, "code_inter": code_seq, "target": seq[-1]})
+            inter_data.append({"item_inter": item_seq, "code_inter": code_seq, "target": seq[-1],"session_inter":session_seq})
 
         return inter_data
 
@@ -70,7 +75,7 @@ class CCFSeqSplitDataset(Dataset):
         data = self.inter_data[idx]
         item_inter = data['item_inter']
         code_inter = np.array(data['code_inter'])
-
+        session_inter = data["session_inter"]
         target = data["target"]
 
         mask_target = np.ones_like(code_inter) * -100
@@ -79,7 +84,7 @@ class CCFSeqSplitDataset(Dataset):
             L = len(item_inter)
             code_inter, mask_target = self.__mask__(code_inter.reshape(L, -1))
 
-        return item_inter, target, code_inter, mask_target
+        return item_inter, target, code_inter, mask_target,session_inter
 
     def __mask__(self, code_inter):
         BL, C = code_inter.shape[0], code_inter.shape[1]
@@ -112,12 +117,15 @@ class Collator(object):
         self.max_his_len = args.max_his_len
 
     def __call__(self, batch):
-        item_inters, targets, code_inters, mask_targets = zip(*batch)
+        item_inters, targets, code_inters, mask_targets,session_inters = zip(*batch)
 
         inter_lens = get_seqs_len(item_inters)
 
         item_inters = [torch.tensor(inter) for inter in item_inters]
         item_inters = pad_sequence(item_inters).transpose(0, 1)
+        
+        session_inters = [torch.tensor(inter) for inter in session_inters]
+        session_inters = pad_sequence(session_inters).transpose(0, 1)
 
         code_inters = [torch.tensor(inter) for inter in code_inters]
         code_inters = pad_sequence(code_inters).transpose(0, 1)
@@ -132,6 +140,7 @@ class Collator(object):
 
 
         return dict(item_inters=item_inters.long(),
+                    session_inters=session_inters.long(),
                     code_inters=code_inters.long(),
                     inter_lens=inter_lens.long(),
                     targets=targets.long(),

@@ -346,16 +346,17 @@ class CCFTrainer(BaseTrainer):
 
         for batch_idx, data in enumerate(iter_data):
 
-            item_inters, inter_lens, labels, code_inters, mask_labels = \
+            item_inters, inter_lens, labels, code_inters, mask_labels,session_ids = \
                     data["item_inters"].to(self.device), data["inter_lens"].to(self.device), data["targets"].to(self.device),\
-                    data['code_inters'].to(self.device), data["mask_targets"].to(self.device)
+                    data['code_inters'].to(self.device), data["mask_targets"].to(self.device),data["session_inters"].to(self.device)
+
 
             total_num += 1
 
             self.optimizer.zero_grad()
 
             loss = self.model.calculate_loss(item_inters, inter_lens, labels,
-                                             code_inters, mask_labels)
+                                             code_inters, mask_labels,session_ids)
     
             self._check_nan(loss['loss'])
             loss['loss'].backward()
@@ -401,12 +402,12 @@ class CCFTrainer(BaseTrainer):
         total = 0
         metrics = {m: 0 for m in self.all_metrics}
         for batch_idx, data in enumerate(iter_data):
-            item_inters, inter_lens, code_inters, labels \
+            item_inters, inter_lens, code_inters, labels,session_ids \
                 = data["item_inters"].to(self.device), data["inter_lens"].to(self.device), \
-                  data['code_inters'].to(self.device), data["targets"].to(self.device)
+                  data['code_inters'].to(self.device), data["targets"].to(self.device),data["session_inters"].to(self.device)
 
             total += len(labels)
-            scores = self.model.full_sort_predict(item_inters, inter_lens, code_inters)
+            scores = self.model.full_sort_predict(item_inters, inter_lens, code_inters,session_ids)
 
             _metrics = self.evaluate(scores, labels)
             for m, v in _metrics.items():

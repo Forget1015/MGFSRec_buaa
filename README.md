@@ -80,10 +80,12 @@ python main.py \
     --batch_size=100 \
     --dropout_prob=0.3 \
     --dropout_prob_cross=0.3 \
-    --n_layers=4 \
-    --n_heads=2 \
+    --n_layers=2 \
+    --n_heads=4 \
     --embedding_size=128 \
     --hidden_size=512\
+    --early_stop=100\
+    --log_dir="./logs/傅立叶"\
     --device=cuda:1
 
 python main.py \

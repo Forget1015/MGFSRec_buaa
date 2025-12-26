@@ -202,7 +202,7 @@ class CCFRec(SeqBaseModel):
         contextual_emb = self.dropout1(contextual_emb)   
         contextual_emb = self.LayerNorm(contextual_emb + residual) 
         return contextual_emb
-    def forward(self, item_seq, item_seq_len, code_seq):
+    def forward(self, item_seq, item_seq_len, code_seq, session_ids):
         
         B, L = item_seq.size(0), item_seq.size(1)
         item_flatten_seq = item_seq.reshape(-1)  # [B*L,]
@@ -211,13 +211,6 @@ class CCFRec(SeqBaseModel):
         text_embs = []
         for i in range(self.text_num):
             text_emb = self.item_text_embedding[i](item_flatten_seq)  # [B*L, H]
-            #---------------------------------------------------------------------
-            # residual = text_emb.view(B, L, -1)
-            # output = self.contextual_convolution(self.item_embedding(item_seq), text_emb.view(B, L, -1))
-            # output = self.dropout1(output)
-            # item_emb = self.LayerNorm(output + residual)
-            # text_emb = text_emb.reshape(B*L,-1)
-            #---------------------------------------------------------------------
             text_embs.append(text_emb)
         encoder_output = torch.stack(text_embs, dim=1)
 
@@ -225,11 +218,10 @@ class CCFRec(SeqBaseModel):
         item_emb = item_seq_emb.mean(dim=1)+ query_seq_emb.mean(dim=1)  # [B*L, H]
         item_emb = item_emb.view(B, L, -1)
         # ------------------------------------------------------
-        # print("外面傅里叶")
-        item_emb_original = item_emb
-        item_emb_context = self.contextual_convolution(self.item_embedding(item_seq), item_emb_original)
-        gate = torch.sigmoid(self.context_gate(item_emb_original))  # [B, L, 1]
-        item_emb = gate * item_emb_context + (1 - gate) * item_emb_original
+        # item_emb_original = item_emb
+        # item_emb_context = self.contextual_convolution(self.item_embedding(item_seq), item_emb_original)
+        # gate = torch.sigmoid(self.context_gate(item_emb_original))  # [B, L, 1]
+        # item_emb = gate * item_emb_context + (1 - gate) * item_emb_original
         # ------------------------------------------------------
         
         
@@ -310,12 +302,12 @@ class CCFRec(SeqBaseModel):
         
         return pos_item_emb, neg_item_emb
     
-    def calculate_loss(self, item_seq, item_seq_len, pos_items, code_seq_mask, labels_mask):
+    def calculate_loss(self, item_seq, item_seq_len, pos_items, code_seq_mask, labels_mask,session_ids):
         
         B, L = item_seq.size(0), item_seq.size(1)
         code_seq = self.index[item_seq].reshape(B*L, -1)
-        item_seq_output, code_output = self.forward(item_seq, item_seq_len, code_seq)
-        item_seq_output_mask, code_output_mask = self.forward(item_seq, item_seq_len, code_seq_mask)
+        item_seq_output, code_output = self.forward(item_seq, item_seq_len, code_seq,session_ids)
+        item_seq_output_mask, code_output_mask = self.forward(item_seq, item_seq_len, code_seq_mask,session_ids)
 
         item_seq_output = F.normalize(item_seq_output, dim=-1)  # [B, H]
         
@@ -357,8 +349,8 @@ class CCFRec(SeqBaseModel):
         
         return loss_dict
 
-    def full_sort_predict(self, item_seq, item_seq_len, code_seq):
-        seq_output, _ = self.forward(item_seq, item_seq_len, code_seq)
+    def full_sort_predict(self, item_seq, item_seq_len, code_seq,session_ids):
+        seq_output, _ = self.forward(item_seq, item_seq_len, code_seq,session_ids)
         seq_output = F.normalize(seq_output, dim=-1)
         
         item_embedding = F.normalize(self.get_item_embedding(), dim=-1)
