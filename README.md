@@ -77,7 +77,7 @@ python main.py \
     --code_level=20 \
     --n_codes_per_lel=256 \
     --max_his_len=20 \
-    --batch_size=100 \
+    --batch_size=60 \
     --dropout_prob=0.3 \
     --dropout_prob_cross=0.3 \
     --n_layers=2 \
@@ -85,7 +85,7 @@ python main.py \
     --embedding_size=128 \
     --hidden_size=512\
     --early_stop=100\
-    --log_dir="./logs/傅里叶"\
+    --log_dir="./logs/时间间隔1天的LSTM改进"\
     --device=cuda:1
 
 python main.py \

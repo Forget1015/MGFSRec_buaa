@@ -65,7 +65,7 @@ def transform_to_jsonl(df, filepath, hislen=20):
     print("Successful write to " + filepath)
     return user_list, item_list, seqs
 
-def transform_to_jsonl_with_session(df, filepath, hislen=20, session_gap_minutes=30, user_timestamp_history={}):
+def transform_to_jsonl_with_session(df, filepath, hislen=20, session_gap_minutes=1440, user_timestamp_history={}):
     user_list = set()
     item_list = set()
     seqs = []
