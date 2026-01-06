@@ -86,7 +86,7 @@ python main.py \
     --hidden_size=512\
     --early_stop=100\
     --log_dir="./logs/傅里叶_分层"\
-    --resume="/home/yejinxuan/yejinxuan/CCFRec/myckpt/Musical_Instruments/Jan-04-2026_02-44-197013_mlm0.6_cl0.4_maskratio0.5_drop0.3_dpcross0.3/best_model.pth"\
+    --resume="/home/yejinxuan/yejinxuan/CCFRec/myckpt/Musical_Instruments/Jan-05-2026_09-38-e79620_mlm0.6_cl0.4_maskratio0.5_drop0.3_dpcross0.3/best_model.pth"\
     --device=cuda:1
 
 
@@ -112,6 +112,31 @@ python main.py \
     --hidden_size=512\
     --early_stop=100\
     --log_dir="./logs/傅里叶_分层_多视角"\
+    --device=cuda:1
+
+    
+python main.py \
+    --dataset=Industrial_and_Scientific \
+    --lr=0.001 \
+    --neg_num=24000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.4 \
+    --mlm_weight=0.6 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=110 \
+    --dropout_prob=0.3 \
+    --dropout_prob_cross=0.3 \
+    --n_layers=2 \
+    --n_heads=4 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --early_stop=100\
+    --log_dir="./logs/Industrial_and_Scientific/傅里叶_分层"\
     --device=cuda:1
 
 python main.py \
