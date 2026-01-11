@@ -82,7 +82,7 @@ if __name__=="__main__":
     log(args_dict, logger)
     
     device = torch.device(args.device)
-    
+    print(args.resume)
     data_path = args.data_path
     dataset = args.dataset
     dataset_path = os.path.join(data_path, dataset)

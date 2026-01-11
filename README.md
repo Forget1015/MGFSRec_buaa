@@ -128,15 +128,16 @@ python main.py \
     --code_level=20 \
     --n_codes_per_lel=256 \
     --max_his_len=50 \
-    --batch_size=100 \
+    --batch_size=90 \
     --dropout_prob=0.2 \
     --dropout_prob_cross=0.1 \
     --n_layers=2 \
     --n_heads=2 \
     --embedding_size=128 \
-    --hidden_size=512
+    --hidden_size=512\
     --early_stop=100\
     --log_dir="./logs/Video_Games/傅里叶_分层"\
+    --resume="/home/yejinxuan/yejinxuan/CCFRec/myckpt/Video_Games/Jan-11-2026_02-18-e18370_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.1/best_model.pth"\
     --device=cuda:1
 
 
@@ -185,6 +186,7 @@ python main.py \
     --hidden_size=512\
     --early_stop=100\
     --log_dir="./logs/Baby_Products/傅里叶_分层"\
+    --resume="/home/yejinxuan/yejinxuan/CCFRec/myckpt/Baby_Products/Jan-09-2026_06-21-987816_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth"\
     --device=cuda:1
 ```
 
