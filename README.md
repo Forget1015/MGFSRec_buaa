@@ -85,7 +85,7 @@ python main.py \
     --embedding_size=128 \
     --hidden_size=512\
     --early_stop=100\
-    --log_dir="./logs/傅里叶_分层"\
+    --log_dir="./logs/消融_简单相加"\
     --device=cuda:1
 
 
@@ -152,8 +152,8 @@ python main.py \
     --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
     --code_level=20 \
     --n_codes_per_lel=256 \
-    --max_his_len=50 \
-    --batch_size=110 \
+    --max_his_len=100 \
+    --batch_size=70 \
     --dropout_prob=0.4 \
     --dropout_prob_cross=0.1 \
     --n_layers=2 \
@@ -161,7 +161,7 @@ python main.py \
     --embedding_size=128 \
     --hidden_size=512\
     --early_stop=100\
-    --log_dir="./logs/Industrial_and_Scientific/消融_无傅里叶"\
+    --log_dir="./logs/Industrial_and_Scientific/分析_长度为100"\
     --device=cuda:1
 python main.py \
     --dataset=Baby_Products \

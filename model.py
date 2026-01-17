@@ -83,6 +83,8 @@ class FrequencyAttention(nn.Module):
         self.freq_proj = nn.Linear(hidden_size, hidden_size)
         self.dropout = nn.Dropout(dropout)
         self.layer_norm = nn.LayerNorm(hidden_size)
+        # 可学习的融合系数，初始化为较小值
+        # self.alpha = nn.Parameter(torch.tensor(0.1))
         
     def forward(self, x):
         B, L, H = x.shape
@@ -93,6 +95,8 @@ class FrequencyAttention(nn.Module):
         weighted_fft = x_fft * freq_weight
         enhanced = torch.fft.irfft(weighted_fft, n=L, dim=1, norm='ortho')
         
+        # 用 sigmoid 限制在 [0, 1] 范围,alpha 不想要注释掉直接改成0.1即可
+        # alpha = torch.sigmoid(self.alpha)
         return self.layer_norm(x + self.dropout(enhanced * 0.1))
 
 class MultiScaleFrequencyFusion(nn.Module):
@@ -109,6 +113,7 @@ class MultiScaleFrequencyFusion(nn.Module):
         
         outputs = []
         for i in range(self.num_scales):
+            # 不同频段的截止点
             cutoff = fft_len // (2 ** i)
             mask = torch.zeros(fft_len, device=x.device)
             mask[:cutoff] = 1.0
@@ -117,6 +122,7 @@ class MultiScaleFrequencyFusion(nn.Module):
             reconstructed = torch.fft.irfft(filtered, n=L, dim=1, norm='ortho')
             outputs.append(reconstructed)
         
+        # 加权融合
         weights = torch.softmax(self.scale_weights, dim=0)
         fused = sum(w * o for w, o in zip(weights, outputs))
         
@@ -124,9 +130,6 @@ class MultiScaleFrequencyFusion(nn.Module):
 
 
 class MGFSRec(SeqBaseModel):
-    """
-    MGFSRec模型 - last_session_repr和attended_output使用简单相加替代门控
-    """
     def __init__(self, args, dataset, index, device):
         super(MGFSRec, self).__init__()
         # load parameters info
@@ -184,10 +187,16 @@ class MGFSRec(SeqBaseModel):
         )
 
         #------------------------------------------------------
+        self.fourier_attention = FrequencyAttention(self.embedding_size)
+        # self.multiScale_frequency_fusion = MultiScaleFrequencyFusion(self.embedding_size)
+        #------------------------------------------------------
+        # Hierarchical Transformer 组件（改进版）
+        
         # BiasEncoding（参考DSIN）：session偏置 + 位置偏置 + 维度偏置
-        self.session_bias = nn.Parameter(torch.zeros(self.max_seq_length, 1, 1))
-        self.position_bias = nn.Parameter(torch.zeros(1, self.max_seq_length, 1))
-        self.dim_bias = nn.Parameter(torch.zeros(1, 1, self.embedding_size))
+        # 在intra-session transformer之前对输入做bias encoding
+        self.session_bias = nn.Parameter(torch.zeros(self.max_seq_length, 1, 1))  # [max_sess, 1, 1]
+        self.position_bias = nn.Parameter(torch.zeros(1, self.max_seq_length, 1))  # [1, max_len, 1]
+        self.dim_bias = nn.Parameter(torch.zeros(1, 1, self.embedding_size))  # [1, 1, H]
         
         # Intra-session transformer (组内)
         self.intra_position_embedding = nn.Embedding(self.max_seq_length, self.embedding_size)
@@ -222,14 +231,16 @@ class MGFSRec(SeqBaseModel):
         # Session-level position embedding（session的位置）
         self.session_position_embedding = nn.Embedding(self.max_seq_length, self.embedding_size)
         
-        # Session Interest Activation（参考DSIN）
+        # 改进1：Session Interest Activation（参考DSIN）
+        # 用最后一个item作为query，对所有session做attention
         self.session_attention_w = nn.Linear(self.embedding_size * 2, self.embedding_size)
         self.session_attention_v = nn.Linear(self.embedding_size, 1, bias=False)
         
-        # ============================================================
-        # 移除门控机制，改用简单相加后的LayerNorm
-        # ============================================================
-        self.output_layer_norm = nn.LayerNorm(self.embedding_size, eps=self.layer_norm_eps)
+        # 改进2：残差连接 - 保留最后一个session的信息
+        self.residual_gate = nn.Sequential(
+            nn.Linear(self.embedding_size * 2, self.embedding_size),
+            nn.Sigmoid()
+        )
         #--------------------------------------------------------
         self.loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
 
@@ -307,7 +318,7 @@ class MGFSRec(SeqBaseModel):
         2. Intra-session: Transformer提取session内兴趣
         3. Inter-session: BiLSTM建模session间时序关系
         4. Session Attention: 用target对session做attention激活
-        5. 简单相加: last_session_repr + attended_output（替代门控）
+        5. Residual: 残差连接保留最后session信息
         """
         B, L, H = item_emb.shape
         device = item_emb.device
@@ -315,12 +326,16 @@ class MGFSRec(SeqBaseModel):
         # 1. 按session分组
         item_emb_sessions, user_sess_count, sess_item_lens = self._split_to_sessions(item_emb, session_ids)
         _, max_sess_count, max_sess_len, _ = item_emb_sessions.shape
+        # item_emb_sessions: [B, max_sess_count, max_sess_len, H]
         
         # 2. BiasEncoding（参考DSIN）
-        sess_bias = self.session_bias[:max_sess_count, :, :]
-        pos_bias = self.position_bias[:, :max_sess_len, :]
-        dim_bias = self.dim_bias
+        # 截取需要的偏置大小
+        sess_bias = self.session_bias[:max_sess_count, :, :]  # [max_sess, 1, 1]
+        pos_bias = self.position_bias[:, :max_sess_len, :]    # [1, max_len, 1]
+        dim_bias = self.dim_bias                               # [1, 1, H]
         
+        # 应用BiasEncoding: BE(k,t,c) = x + w_k + w_t + w_c
+        # item_emb_sessions: [B, max_sess, max_len, H]
         item_emb_sessions = item_emb_sessions + sess_bias.unsqueeze(0) + pos_bias.unsqueeze(0) + dim_bias.unsqueeze(0)
         
         # 3. Intra-session transformer (组内)
@@ -328,6 +343,7 @@ class MGFSRec(SeqBaseModel):
         flat_sess_lens = sess_item_lens.view(-1)
         intra_mask = self._get_intra_session_mask(flat_sess_lens, max_sess_len, device)
         
+        # 添加位置编码（这里保留原来的position embedding，与BiasEncoding互补）
         intra_pos_ids = torch.arange(max_sess_len, dtype=torch.long, device=device)
         intra_pos_ids = intra_pos_ids.unsqueeze(0).expand(B * max_sess_count, -1)
         intra_pos_emb = self.intra_position_embedding(intra_pos_ids)
@@ -339,7 +355,7 @@ class MGFSRec(SeqBaseModel):
         
         # 4. 聚合session表示：取最后一个有效item的表示
         gather_idx = (flat_sess_lens - 1).clamp(min=0).view(-1, 1, 1).expand(-1, -1, H)
-        session_repr = intra_output.gather(dim=1, index=gather_idx).squeeze(1)
+        session_repr = intra_output.gather(dim=1, index=gather_idx).squeeze(1)  # [B*max_sess, H]
         
         valid_sess_mask = (flat_sess_lens > 0).float().unsqueeze(1)
         session_repr = session_repr * valid_sess_mask
@@ -365,24 +381,26 @@ class MGFSRec(SeqBaseModel):
         
         # 7. Session Attention Activation（参考DSIN）
         last_sess_idx = (user_sess_count - 1).clamp(min=0).view(-1, 1, 1).expand(-1, -1, H)
-        last_session_repr = inter_output.gather(dim=1, index=last_sess_idx).squeeze(1)
+        last_session_repr = inter_output.gather(dim=1, index=last_sess_idx).squeeze(1)  # [B, H]
         
+        # Attention: 计算每个session与最后session的相关性
         query_expanded = last_session_repr.unsqueeze(1).expand(-1, max_sess_count, -1)
         attention_input = torch.cat([inter_output, query_expanded], dim=-1)
         attention_hidden = torch.tanh(self.session_attention_w(attention_input))
         attention_scores = self.session_attention_v(attention_hidden).squeeze(-1)
         
+        # Mask无效session
         sess_mask = torch.arange(max_sess_count, device=device).unsqueeze(0) < user_sess_count.unsqueeze(1)
         attention_scores = attention_scores.masked_fill(~sess_mask, -1e9)
         attention_weights = F.softmax(attention_scores, dim=-1)
         
+        # 加权聚合所有session
         attended_output = torch.bmm(attention_weights.unsqueeze(1), inter_output).squeeze(1)
         
-        # ============================================================
-        # 8. 简单相加替代门控机制
-        # ============================================================
-        final_output = last_session_repr + attended_output
-        final_output = self.output_layer_norm(final_output)
+        # 8. 残差连接
+        gate_input = torch.cat([attended_output, last_session_repr], dim=-1)
+        gate = self.residual_gate(gate_input)
+        final_output = gate * last_session_repr + (1 - gate) * attended_output
         
         return final_output
     
@@ -412,6 +430,11 @@ class MGFSRec(SeqBaseModel):
         item_seq_emb = self.qformer(query_seq_emb, encoder_output)[-1]
         item_emb = item_seq_emb.mean(dim=1) + query_seq_emb.mean(dim=1)
         item_emb = item_emb.view(B, L, -1)
+
+        # ------------------------------------------------------
+        item_emb = self.fourier_attention(item_emb)
+        # item_emb = self.multiScale_frequency_fusion(item_emb)
+        # ------------------------------------------------------
         
         # 使用改进的层级Transformer
         item_seq_output = self._hierarchical_transformer(item_emb, session_ids, item_seq_len)

@@ -88,3 +88,25 @@ Fri 16 Jan 2026 13:21:03 INFO  [Epoch 4] Val Result: {'recall@5': 0.028485777008
 Fri 16 Jan 2026 14:40:20 INFO  [Epoch 5] training [time: 4756.20s, loss: 9.6064, mlm_loss: 4.4076, rec_loss: 8.2456, cl_loss: 0.0770, ]
 Fri 16 Jan 2026 14:44:58 INFO  [Epoch 5] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
 Fri 16 Jan 2026 14:44:58 INFO  [Epoch 5] Val Result: {'recall@5': 0.029003097289374374, 'ndcg@5': 0.018599558566967753, 'recall@10': 0.04657872221890607, 'ndcg@10': 0.024237312124237798}
+Fri 16 Jan 2026 16:03:51 INFO  [Epoch 6] training [time: 4732.39s, loss: 9.5664, mlm_loss: 4.3759, rec_loss: 8.2158, cl_loss: 0.0758, ]
+Fri 16 Jan 2026 16:08:31 INFO  [Epoch 6] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Fri 16 Jan 2026 16:08:31 INFO  [Epoch 6] Val Result: {'recall@5': 0.029341345165376682, 'ndcg@5': 0.018945188501371276, 'recall@10': 0.047261850282204844, 'ndcg@10': 0.024708194795940382}
+Fri 16 Jan 2026 17:29:00 INFO  [Epoch 7] training [time: 4829.52s, loss: 9.5329, mlm_loss: 4.3506, rec_loss: 8.1901, cl_loss: 0.0751, ]
+Fri 16 Jan 2026 17:33:43 INFO  [Epoch 7] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Fri 16 Jan 2026 17:33:43 INFO  [Epoch 7] Val Result: {'recall@5': 0.029666328418790664, 'ndcg@5': 0.019089069153031574, 'recall@10': 0.047905184477738644, 'ndcg@10': 0.02493806360627759}
+Fri 16 Jan 2026 18:53:36 INFO  [Epoch 8] training [time: 4792.75s, loss: 9.5052, mlm_loss: 4.3302, rec_loss: 8.1689, cl_loss: 0.0746, ]
+Fri 16 Jan 2026 18:58:22 INFO  [Epoch 8] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Fri 16 Jan 2026 18:58:22 INFO  [Epoch 8] Val Result: {'recall@5': 0.030203545633617858, 'ndcg@5': 0.01943327109511526, 'recall@10': 0.048051095326210234, 'ndcg@10': 0.025151740327060693}
+Fri 16 Jan 2026 20:17:15 INFO  [Epoch 9] training [time: 4733.24s, loss: 9.4809, mlm_loss: 4.3134, rec_loss: 8.1498, cl_loss: 0.0742, ]
+Fri 16 Jan 2026 20:21:57 INFO  [Epoch 9] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Fri 16 Jan 2026 20:21:57 INFO  [Epoch 9] Val Result: {'recall@5': 0.030190281011029534, 'ndcg@5': 0.019426966847940905, 'recall@10': 0.04826332928762345, 'ndcg@10': 0.02523513278582184}
+Fri 16 Jan 2026 21:42:37 INFO  [Epoch 10] training [time: 4840.00s, loss: 9.4595, mlm_loss: 4.2997, rec_loss: 8.1324, cl_loss: 0.0743, ]
+Fri 16 Jan 2026 21:47:21 INFO  [Epoch 10] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Fri 16 Jan 2026 21:47:21 INFO  [Epoch 10] Val Result: {'recall@5': 0.03063464586773845, 'ndcg@5': 0.01972140916100956, 'recall@10': 0.048727591078214845, 'ndcg@10': 0.02553123556304244}
+Fri 16 Jan 2026 23:07:44 INFO  [Epoch 11] training [time: 4822.52s, loss: 9.4403, mlm_loss: 4.2877, rec_loss: 8.1170, cl_loss: 0.0741, ]
+Fri 16 Jan 2026 23:12:27 INFO  [Epoch 11] Val Result: {'recall@5': 0.029852033135027226, 'ndcg@5': 0.01928589711839044, 'recall@10': 0.04771284745020792, 'ndcg@10': 0.025013523628542235}
+Sat 17 Jan 2026 00:33:14 INFO  [Epoch 12] training [time: 4846.75s, loss: 9.4245, mlm_loss: 4.2772, rec_loss: 8.1046, cl_loss: 0.0736, ]
+Sat 17 Jan 2026 00:37:57 INFO  [Epoch 12] Saving current: ./myckpt/Baby_Products/Jan-16-2026_06-19-567b1d_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth
+Sat 17 Jan 2026 00:37:57 INFO  [Epoch 12] Val Result: {'recall@5': 0.030952996809858267, 'ndcg@5': 0.019930245865607082, 'recall@10': 0.04899951584127553, 'ndcg@10': 0.02571409090729706}
+Sat 17 Jan 2026 01:57:34 INFO  [Epoch 13] training [time: 4776.97s, loss: 9.4093, mlm_loss: 4.2675, rec_loss: 8.0922, cl_loss: 0.0736, ]
+Sat 17 Jan 2026 02:02:13 INFO  [Epoch 13] Val Result: {'recall@5': 0.030654542801620936, 'ndcg@5': 0.01977682401852998, 'recall@10': 0.04865463565397905, 'ndcg@10': 0.02555133841020467}
