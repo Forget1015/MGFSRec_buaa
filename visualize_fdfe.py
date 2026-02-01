@@ -1,22 +1,211 @@
-"""
-可视化 FrequencyAttention (FDFE) 模块的效果
-对比 Item Embedding 序列在经过 FDFE 前后的频谱图（幅度谱）
-"""
-
 import os
 import argparse
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from sklearn.decomposition import PCA
+import seaborn as sns
 
-from data import load_split_data, CCFSeqSplitDataset, Collator
+from data import load_split_data, MGFSSeqSplitDataset, Collator
 from torch.utils.data import DataLoader
-from model import CCFRec, FrequencyAttention
+from model import MGFSRec
 from utils import load_json
+
+# ==========================================
+# 1. 设置论文级别的绘图风格
+# ==========================================
+sns.set_style("whitegrid")
+
+# 加载 Times New Roman 风格字体 (Nimbus Roman)
+_font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'times.ttf')
+if os.path.exists(_font_path):
+    fm.fontManager.addfont(_font_path)
+    _font_prop = fm.FontProperties(fname=_font_path)
+    plt.rcParams['font.family'] = _font_prop.get_name()
+else:
+    plt.rcParams['font.family'] = 'serif'
+
+plt.rcParams['font.size'] = 14
+plt.rcParams['axes.linewidth'] = 1.5
+plt.rcParams['xtick.major.width'] = 1.5
+plt.rcParams['ytick.major.width'] = 1.5
+
+# ==========================================
+# 2. 核心可视化函数 (FDFE Analysis) - 方案一：归一化
+# ==========================================
+def visualize_fdfe_effect(model, test_loader, device, save_path="./fdfe_analysis.pdf"):
+    """
+    可视化 FDFE 模块效果：
+    (a) 频谱去噪对比 (Normalized View: Offset Alignment)
+    (b) 滤波器权重形态 (Normalized View: Max Scaling)
+    """
+    model.eval()
+    
+    # 获取序列长度相关的 FFT 参数
+    # 注意：这里的 FFT 是沿着 dim=1 (Length) 做的
+    # 假设 test_loader 的 batch size 不变，序列长度由 collator 决定
+    # 我们先跑一个 batch 看看维度
+    sample_batch = next(iter(test_loader))
+    sample_seq = sample_batch["item_inters"]
+    L = sample_seq.size(1)
+    n_freq_bins = L // 2 + 1
+    
+    # 累积变量
+    total_mag_input = np.zeros(n_freq_bins)
+    total_mag_filtered = np.zeros(n_freq_bins)
+    total_filter_g = np.zeros(n_freq_bins)
+    sample_count = 0
+    
+    # 设定采样批次，跑 20 个 batch 足够得到稳定的平均值了
+    max_batches = 20
+    print(f"正在深入 FDFE 内部提取数据 (Sampling {max_batches} batches, SeqLen={L})...")
+    
+    with torch.no_grad():
+        for i, data_batch in enumerate(test_loader):
+            if i >= max_batches: break
+            
+            # --- 数据搬运 ---
+            item_seq = data_batch["item_inters"].to(device)
+            code_seq = data_batch["code_inters"].to(device)
+            
+            # =======================================================
+            # 步骤 1: 手动执行模型前向传播，获取 Item Embedding
+            # =======================================================
+            B, cur_L = item_seq.size(0), item_seq.size(1)
+            # 确保序列长度一致，如果不一致可能会报错，建议固定 max_his_len
+            if cur_L != L: continue 
+
+            item_flatten_seq = item_seq.reshape(-1)
+            
+            query_seq_emb = model.query_code_embedding(code_seq)
+            
+            text_embs = []
+            for j in range(model.text_num):
+                text_emb = model.item_text_embedding[j](item_flatten_seq)
+                text_embs.append(text_emb)
+            encoder_output = torch.stack(text_embs, dim=1)
+            
+            item_seq_emb = model.qformer(query_seq_emb, encoder_output)[-1]
+            
+            # FDFE 的输入 Item Embedding [B, L, H]
+            item_emb = item_seq_emb.mean(dim=1) + query_seq_emb.mean(dim=1)
+            item_emb = item_emb.view(B, L, -1)
+            
+            # =======================================================
+            # 步骤 2: 模拟 FDFE 内部计算
+            # =======================================================
+            
+            # (A) FFT 变换 (dim=1, Length)
+            fft_input = torch.fft.rfft(item_emb, dim=1, norm='ortho') # [B, Freqs, H]
+            mag_input = torch.abs(fft_input) 
+            
+            # (B) 计算自适应权重 G (模拟 FrequencyAttention 内部)
+            # freq_proj: [B, Freqs, H] -> [B, Freqs, H]
+            filter_logits = model.fourier_attention.freq_proj(mag_input)
+            filter_g = torch.softmax(filter_logits, dim=1) 
+            
+            # (C) 应用滤波
+            fft_filtered = fft_input * filter_g
+            mag_filtered = torch.abs(fft_filtered)
+
+            # ======================================================= 63 
+            # 步骤 3: 累积统计量
+            # 对 Batch(0) 和 Hidden(2) 维度取平均，保留 Freq(1) 维度 -> [Freqs]
+            # =======================================================
+            batch_mag_in = mag_input.mean(dim=(0, 2)).cpu().numpy()
+            batch_mag_out = mag_filtered.mean(dim=(0, 2)).cpu().numpy()
+            batch_g = filter_g.mean(dim=(0, 2)).cpu().numpy()
+            
+            total_mag_input += batch_mag_in
+            total_mag_filtered += batch_mag_out
+            total_filter_g += batch_g
+            
+            sample_count += 1
+            
+    # 计算全局平均
+    avg_mag_input = total_mag_input / sample_count
+    avg_mag_filtered = total_mag_filtered / sample_count
+    avg_filter_g = total_filter_g / sample_count
+    
+    # 频率轴索引
+    freqs = np.arange(len(avg_mag_input))
+
+    # =======================================================
+    # 步骤 4: 数据后处理 (方案一：归一化与对齐)
+    # =======================================================
+    
+    # A. 归一化 G 到 [0, 1]
+    g_max = avg_filter_g.max()
+    avg_filter_g_norm = avg_filter_g / (g_max + 1e-9)
+    
+    # B. 对齐频谱的低频能量
+    # 计算对数幅度
+    log_mag_before = np.log(avg_mag_input + 1e-8)
+    log_mag_after = np.log(avg_mag_filtered + 1e-8)
+    
+    # 计算 Offset：让 Refined 在 Frequency=0 处与 Original 对齐
+    # 这样直观展示：低频保留，高频下降
+    offset = log_mag_before[0] - log_mag_after[0]
+    log_mag_after_shifted = log_mag_after + offset
+
+    # =======================================================
+    # 步骤 5: 绘图 - 分开生成两个纯净的SVG图
+    # =======================================================
+    print("开始绘图 (Normalized View)...")
+    
+    # 根据 save_path 生成两个文件名
+    base_path = save_path.rsplit('.', 1)[0]  # 去掉扩展名
+    save_path_a = base_path + "_spectrum.svg"
+    save_path_b = base_path + "_filter.svg"
+    
+    # --- 图1: 对数幅度谱对比 (纯净版) ---
+    fig1, ax1 = plt.subplots(figsize=(7, 5))
+    
+    ax1.plot(freqs, log_mag_before, 
+             label='Original Input', color='#1f77b4', linestyle='--', linewidth=2.5, alpha=0.8)
+    
+    ax1.plot(freqs, log_mag_after_shifted, 
+             label='Refined (After FDFR)', color='#d62728', linewidth=2.5)
+    
+    ax1.fill_between(freqs, 
+                     log_mag_before, 
+                     log_mag_after_shifted,
+                     where=(log_mag_before > log_mag_after_shifted),
+                     color='gray', alpha=0.2, label='Suppressed Noise')
+    
+    ax1.set_xlim(0, len(freqs) - 1)
+    ax1.legend(loc='upper right', fontsize=13, frameon=True, shadow=True)
+    ax1.grid(True, linestyle=':', alpha=0.6)
+    
+    # 突出显示坐标轴刻度数值
+    ax1.tick_params(axis='both', which='major', labelsize=14, width=2, length=6)
+    
+    plt.tight_layout()
+    plt.savefig(save_path_a, format='svg', bbox_inches='tight')
+    print(f"图1 (频谱) 已保存至: {save_path_a}")
+    plt.close(fig1)
+    
+    # --- 图2: 滤波器曲线 (纯净版) ---
+    fig2, ax2 = plt.subplots(figsize=(7, 5))
+    
+    ax2.plot(freqs, avg_filter_g_norm, color='#2ca02c', linewidth=3.5)
+    
+    ax2.set_ylim(-0.05, 1.1)
+    ax2.set_xlim(0, len(freqs) - 1)
+    ax2.grid(True, linestyle=':', alpha=0.6)
+    
+    # 突出显示坐标轴刻度数值
+    ax2.tick_params(axis='both', which='major', labelsize=14, width=2, length=6)
+    
+    plt.tight_layout()
+    plt.savefig(save_path_b, format='svg', bbox_inches='tight')
+    print(f"图2 (滤波器) 已保存至: {save_path_b}")
+    plt.close(fig2)
 
 
 def parse_arguments():
+    # 保留你原来的参数解析
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=2020)
     parser.add_argument("--dataset", type=str, default="Musical_Instruments")
@@ -59,227 +248,64 @@ def parse_arguments():
     parser.add_argument("--ckpt_dir", type=str, default="./myckpt/")
     
     # 可视化专用参数
-    parser.add_argument("--ckpt_path", type=str, required=True, help="训练好的模型checkpoint路径")
-    parser.add_argument("--sample_idx", type=int, default=0, help="要可视化的样本索引")
-    parser.add_argument("--save_path", type=str, default="./fdfe_visualization.png", help="保存图片路径")
+    parser.add_argument("--ckpt_path", type=str, default="./myckpt/best_model.pth", help="训练好的模型checkpoint路径")
+    parser.add_argument("--save_path", type=str, default="./fdfe_analysis.pdf", help="保存图片路径")
     
     args, _ = parser.parse_known_args()
     return args
 
 
-def compute_spectrum(x):
-    """
-    计算信号的频谱（幅度谱）
-    x: [L, H] 或 [H]
-    返回: 频率轴和幅度谱
-    """
-    if x.dim() == 1:
-        x = x.unsqueeze(0)
-    
-    # 对序列维度做FFT
-    x_fft = torch.fft.rfft(x, dim=0, norm='ortho')
-    magnitude = torch.abs(x_fft)  # [freq_bins, H]
-    
-    # 对所有维度取平均，得到整体频谱
-    avg_magnitude = magnitude.mean(dim=-1)  # [freq_bins]
-    
-    L = x.shape[0]
-    freq_bins = avg_magnitude.shape[0]
-    freqs = torch.fft.rfftfreq(L)[:freq_bins]
-    
-    return freqs.numpy(), avg_magnitude.numpy()
-
-
-def visualize_fdfe_effect(model, data_batch, device, sample_idx=0, save_path="./fdfe_visualization.png"):
-    """
-    可视化 FDFE 前后的频谱变化
-    """
-    model.eval()
-    
-    with torch.no_grad():
-        item_seq = data_batch["item_inters"].to(device)
-        code_seq = data_batch["code_inters"].to(device)
-        session_ids = data_batch["session_inters"].to(device)
-        inter_lens = data_batch["inter_lens"].to(device)
-        
-        B, L = item_seq.size(0), item_seq.size(1)
-        item_flatten_seq = item_seq.reshape(-1)
-        query_seq_emb = model.query_code_embedding(code_seq)
-        
-        # 获取文本嵌入
-        text_embs = []
-        for i in range(model.text_num):
-            text_emb = model.item_text_embedding[i](item_flatten_seq)
-            text_embs.append(text_emb)
-        encoder_output = torch.stack(text_embs, dim=1)
-        
-        # 通过 QFormer 得到 item embedding
-        item_seq_emb = model.qformer(query_seq_emb, encoder_output)[-1]
-        item_emb = item_seq_emb.mean(dim=1) + query_seq_emb.mean(dim=1)
-        item_emb = item_emb.view(B, L, -1)
-        
-        # FDFE 之前的 embedding
-        item_emb_before = item_emb.clone()
-        
-        # FDFE 之后的 embedding
-        item_emb_after = model.fourier_attention(item_emb)
-        
-        # 选择一个样本进行可视化
-        seq_len = inter_lens[sample_idx].item()
-        emb_before = item_emb_before[sample_idx, :seq_len, :].cpu()  # [seq_len, H]
-        emb_after = item_emb_after[sample_idx, :seq_len, :].cpu()    # [seq_len, H]
-        
-        # 计算频谱
-        freqs_before, mag_before = compute_spectrum(emb_before)
-        freqs_after, mag_after = compute_spectrum(emb_after)
-        
-        # 同时获取 FDFE 内部的中间结果用于更详细的分析
-        x = item_emb_before[sample_idx:sample_idx+1, :seq_len, :].cpu()
-        x_fft = torch.fft.rfft(x, dim=1, norm='ortho')
-        freq_magnitude_raw = torch.abs(x_fft).squeeze(0)  # [freq_bins, H]
-        
-    # ==================== 绘图 ====================
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    
-    # 1. 原始 vs 增强后的频谱对比（平均）
-    ax1 = axes[0, 0]
-    ax1.plot(freqs_before, mag_before, 'b-', label='Before FDFE', linewidth=2, alpha=0.8)
-    ax1.plot(freqs_after, mag_after, 'r-', label='After FDFE', linewidth=2, alpha=0.8)
-    ax1.set_xlabel('Normalized Frequency', fontsize=12)
-    ax1.set_ylabel('Magnitude (Averaged over dims)', fontsize=12)
-    ax1.set_title('Spectrum Comparison: Before vs After FDFE', fontsize=14)
-    ax1.legend(fontsize=11)
-    ax1.grid(True, alpha=0.3)
-    
-    # 2. 频谱差异图
-    ax2 = axes[0, 1]
-    diff = mag_after - mag_before
-    colors = ['green' if d >= 0 else 'red' for d in diff]
-    ax2.bar(range(len(diff)), diff, color=colors, alpha=0.7)
-    ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-    ax2.set_xlabel('Frequency Bin', fontsize=12)
-    ax2.set_ylabel('Magnitude Difference', fontsize=12)
-    ax2.set_title('Spectrum Difference (After - Before)', fontsize=14)
-    ax2.grid(True, alpha=0.3)
-    
-    # 3. 原始频谱热力图
-    ax3 = axes[0, 2]
-    im3 = ax3.imshow(freq_magnitude_raw.numpy().T, aspect='auto', cmap='viridis', origin='lower')
-    ax3.set_xlabel('Frequency Bin', fontsize=12)
-    ax3.set_ylabel('Embedding Dimension', fontsize=12)
-    ax3.set_title('Original Frequency Magnitude Heatmap', fontsize=14)
-    plt.colorbar(im3, ax=ax3)
-    
-    # 4. 时域信号对比（选择几个维度）
-    ax4 = axes[1, 0]
-    dims_to_show = [0, emb_before.shape[1]//4, emb_before.shape[1]//2, -1]
-    for i, dim in enumerate(dims_to_show):
-        ax4.plot(emb_before[:, dim].numpy(), '--', alpha=0.6, label=f'Before (dim {dim})')
-        ax4.plot(emb_after[:, dim].numpy(), '-', alpha=0.8, label=f'After (dim {dim})')
-    ax4.set_xlabel('Sequence Position', fontsize=12)
-    ax4.set_ylabel('Embedding Value', fontsize=12)
-    ax4.set_title('Time Domain: Selected Dimensions', fontsize=14)
-    ax4.legend(fontsize=8, ncol=2)
-    ax4.grid(True, alpha=0.3)
-    
-    # 5. 各频率分量的能量分布
-    ax5 = axes[1, 1]
-    energy_before = mag_before ** 2
-    energy_after = mag_after ** 2
-    x_pos = np.arange(len(energy_before))
-    width = 0.35
-    ax5.bar(x_pos - width/2, energy_before, width, label='Before FDFE', alpha=0.8)
-    ax5.bar(x_pos + width/2, energy_after, width, label='After FDFE', alpha=0.8)
-    ax5.set_xlabel('Frequency Bin', fontsize=12)
-    ax5.set_ylabel('Energy (Magnitude²)', fontsize=12)
-    ax5.set_title('Energy Distribution by Frequency', fontsize=14)
-    ax5.legend(fontsize=11)
-    ax5.grid(True, alpha=0.3)
-    
-    # 6. 增强比例图
-    ax6 = axes[1, 2]
-    ratio = np.where(mag_before > 1e-8, mag_after / mag_before, 1.0)
-    ax6.bar(range(len(ratio)), ratio, color='purple', alpha=0.7)
-    ax6.axhline(y=1.0, color='red', linestyle='--', linewidth=1.5, label='No change (ratio=1)')
-    ax6.set_xlabel('Frequency Bin', fontsize=12)
-    ax6.set_ylabel('Enhancement Ratio (After/Before)', fontsize=12)
-    ax6.set_title('FDFE Enhancement Ratio by Frequency', fontsize=14)
-    ax6.legend(fontsize=11)
-    ax6.grid(True, alpha=0.3)
-    
-    plt.suptitle(f'FrequencyAttention (FDFE) Visualization\nSample Index: {sample_idx}, Sequence Length: {seq_len}', 
-                 fontsize=16, fontweight='bold')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"可视化结果已保存到: {save_path}")
-    
-    # 打印一些统计信息
-    print("\n========== FDFE 效果统计 ==========")
-    print(f"序列长度: {seq_len}")
-    print(f"Embedding 维度: {emb_before.shape[1]}")
-    print(f"频率分量数: {len(mag_before)}")
-    print(f"\n原始频谱能量总和: {(mag_before**2).sum():.4f}")
-    print(f"增强后频谱能量总和: {(mag_after**2).sum():.4f}")
-    print(f"能量变化比例: {(mag_after**2).sum() / (mag_before**2).sum():.4f}")
-    print(f"\n低频增强比例 (前1/3): {ratio[:len(ratio)//3].mean():.4f}")
-    print(f"中频增强比例 (中1/3): {ratio[len(ratio)//3:2*len(ratio)//3].mean():.4f}")
-    print(f"高频增强比例 (后1/3): {ratio[2*len(ratio)//3:].mean():.4f}")
-
-
 def main():
     args = parse_arguments()
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
-    
-    print(f"使用设备: {device}")
-    print(f"加载数据集: {args.dataset}")
-    
-    # 加载数据
+    print(f"Using device: {device}")
+
+    # 1. 加载数据
     data_path = args.data_path
     dataset = args.dataset
     dataset_path = os.path.join(data_path, dataset)
     
+    # 加载数据集
     item2id, n_items, train, val, test = load_split_data(args)
     index = load_json(os.path.join(dataset_path, dataset + args.text_index_path))
     
-    # 使用测试集
-    test_dataset = CCFSeqSplitDataset(args, n_items, test, index, 'test')
+    # 准备 Test Loader
+    # 这里的 batch_size 设为 32，你可以根据显存调整
+    test_dataset = MGFSSeqSplitDataset(args, n_items, test, index, 'test')
     collator = Collator(args)
     test_loader = DataLoader(test_dataset, num_workers=0, collate_fn=collator,
-                             batch_size=32, shuffle=False, pin_memory=False)
+                             batch_size=32, shuffle=False)
     
-    # 加载文本嵌入
+    # 2. 准备 Text Embedding
     text_embs = []
     for ttype in args.text_types:
         text_emb_file = f".t5.{ttype}.emb.npy"
         text_emb = np.load(os.path.join(args.data_path, args.dataset, args.dataset + text_emb_file))
+        # 保持和训练时一致的 PCA 处理
         text_emb = PCA(n_components=args.embedding_size, whiten=True).fit_transform(text_emb)
         text_embs.append(text_emb)
     args.text_embedding_size = text_embs[0].shape[-1]
     
-    # 初始化模型
-    print("初始化模型...")
-    model = CCFRec(args, test_dataset, index, device).to(device)
+    # 3. 初始化模型
+    print("Initializing model...")
+    model = MGFSRec(args, test_dataset, index, device).to(device)
     
-    # 加载文本嵌入到模型
+    # 赋值 Text Embedding
     for i in range(len(args.text_types)):
         model.item_text_embedding[i].weight.data[1:] = torch.tensor(text_embs[i], dtype=torch.float32, device=device)
     
-    # 加载训练好的模型权重
-    print(f"加载模型权重: {args.ckpt_path}")
-    checkpoint = torch.load(args.ckpt_path, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint["state_dict"], strict=False)
+    # 4. 加载权重
+    if os.path.exists(args.ckpt_path):
+        print(f"Loading checkpoint from {args.ckpt_path}")
+        checkpoint = torch.load(args.ckpt_path, map_location=device, weights_only=False)
+        # 处理 state_dict 键名
+        state_dict = checkpoint.get("state_dict", checkpoint)
+        model.load_state_dict(state_dict, strict=False)
+    else:
+        print(f"Warning: Checkpoint {args.ckpt_path} not found! Using random weights.")
     
-    # 获取一个batch的数据
-    data_batch = next(iter(test_loader))
-    
-    # 可视化
-    print(f"\n开始可视化样本 {args.sample_idx}...")
-    visualize_fdfe_effect(model, data_batch, device, 
-                          sample_idx=args.sample_idx, 
-                          save_path=args.save_path)
-
+    # 5. 运行可视化
+    visualize_fdfe_effect(model, test_loader, device, save_path=args.save_path)
 
 if __name__ == "__main__":
     main()

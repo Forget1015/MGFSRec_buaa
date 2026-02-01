@@ -142,8 +142,8 @@ python main.py \
     --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
     --code_level=20 \
     --n_codes_per_lel=256 \
-    --max_his_len=100 \
-    --batch_size=50 \
+    --max_his_len=50 \
+    --batch_size=100 \
     --dropout_prob=0.4 \
     --dropout_prob_cross=0.1 \
     --n_layers=2 \
@@ -151,7 +151,7 @@ python main.py \
     --embedding_size=128 \
     --hidden_size=512\
     --early_stop=100\
-    --log_dir="./logs/Industrial_and_Scientific/分析_长度为100"\
+    --log_dir="./logs/Industrial_and_Scientific/分析_时间为12小时"\
     --device=cuda:1
 python main.py \
     --dataset=Baby_Products \
@@ -166,7 +166,7 @@ python main.py \
     --code_level=20 \
     --n_codes_per_lel=256 \
     --max_his_len=50 \
-    --batch_size=110 \
+    --batch_size=100 \
     --dropout_prob=0.2 \
     --dropout_prob_cross=0.2 \
     --n_layers=2 \
@@ -174,7 +174,7 @@ python main.py \
     --embedding_size=128 \
     --hidden_size=512\
     --early_stop=100\
-    --log_dir="./logs/Baby_Products/消融_简单相加"\
+    --log_dir="./logs/Baby_Products/分析_时间为12小时"\
     --device=cuda:1
 
 python visualize_fdfe.py \
@@ -203,6 +203,131 @@ python visualize_fdfe.py \
     --device=cuda:1\
     --sample_idx 0 \
     --save_path ./fdfe_visualization.png
+python visualize_fdfe.py \
+    --dataset=Industrial_and_Scientific \
+    --lr=0.0005 \
+    --neg_num=25000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.4 \
+    --mlm_weight=0.2 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=100 \
+    --dropout_prob=0.4 \
+    --dropout_prob_cross=0.1 \
+    --n_layers=2 \
+    --n_heads=2 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --early_stop=100\
+    --log_dir="./logs/Industrial_and_Scientific/傅里叶_分层"\
+    --ckpt_path="/home/yejinxuan/yejinxuan/MGFSRec/myckpt/Industrial_and_Scientific/Jan-13-2026_02-57-51b829_mlm0.2_cl0.4_maskratio0.5_drop0.4_dpcross0.1/best_model.pth"\
+    --device=cuda:1\
+    --sample_idx=0 \
+    --save_path ./fdfe_visualization.png
+python visualize_gating.py \
+    --dataset=Industrial_and_Scientific \
+    --neg_num=25000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.5 \
+    --mlm_weight=0.3 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=100 \
+    --dropout_prob=0.2 \
+    --dropout_prob_cross=0.2 \
+    --n_layers=2 \
+    --n_heads=2 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --max_his_len=100 \
+    --model_path=/home/yejinxuan/yejinxuan/MGFSRec/myckpt/Industrial_and_Scientific/Jan-18-2026_03-05-d3f421_mlm0.2_cl0.4_maskratio0.5_drop0.4_dpcross0.1/best_model.pth \
+    --min_seq_len=15 \
+    --num_samples=5 \
+    --output_dir=./visualizations\
+    --device=cuda:1
+
+python visualize_gating.py \
+    --dataset=Baby_Products \
+    --lr=0.0005 \
+    --neg_num=25000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.5 \
+    --mlm_weight=0.3 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=100 \
+    --dropout_prob=0.2 \
+    --dropout_prob_cross=0.2 \
+    --n_layers=2 \
+    --n_heads=2 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --early_stop=100\
+    --log_dir="./logs/Baby_Products/分析_长度为100_原模型"\
+    --model_path=/home/yejinxuan/yejinxuan/MGFSRec/myckpt/Baby_Products/Jan-10-2026_02-51-36f8d3_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth \
+    --topk=5\
+    --device=cuda:1
+
+python noise_robustness_analysis.py \
+    --dataset=Industrial_and_Scientific \
+    --lr=0.0005 \
+    --neg_num=25000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.4 \
+    --mlm_weight=0.2 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=100 \
+    --dropout_prob=0.4 \
+    --dropout_prob_cross=0.1 \
+    --n_layers=2 \
+    --n_heads=2 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --early_stop=100\
+    --checkpoint_path="/home/yejinxuan/yejinxuan/MGFSRec/myckpt/Industrial_and_Scientific/Jan-13-2026_02-57-51b829_mlm0.2_cl0.4_maskratio0.5_drop0.4_dpcross0.1/best_model.pth" \
+    --output_dir=./visualizations
+python noise_robustness_analysis.py \
+    --dataset=Baby_Products \
+    --lr=0.0005 \
+    --neg_num=25000 \
+    --text_types title brand features categories description \
+    --mask_ratio=0.5 \
+    --cl_weight=0.5 \
+    --mlm_weight=0.3 \
+    --data_path=./dataset \
+    --text_index_path=.code.pq.20_256.pca128.title_brand_features_categories_description.json \
+    --code_level=20 \
+    --n_codes_per_lel=256 \
+    --max_his_len=50 \
+    --batch_size=100 \
+    --dropout_prob=0.2 \
+    --dropout_prob_cross=0.2 \
+    --n_layers=2 \
+    --n_heads=2 \
+    --embedding_size=128 \
+    --hidden_size=512\
+    --early_stop=100\
+    --ckpt_path="/home/yejinxuan/yejinxuan/MGFSRec/myckpt/Baby_Products/Jan-10-2026_02-51-36f8d3_mlm0.3_cl0.5_maskratio0.5_drop0.2_dpcross0.2/best_model.pth" \
+    --device=cuda:1\
+    --output_dir=./visualizations
 ```
 
 
